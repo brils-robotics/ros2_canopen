@@ -99,6 +99,13 @@ public:
   {
     return node_canopen_402_driver_->set_operation_mode(mode, channel);
   }
+
+  void set_pdo_output_enabled(bool enabled)
+  {
+    node_canopen_402_driver_->set_pdo_output_enabled(enabled);
+  }
+
+  bool is_pdo_output_enabled() { return node_canopen_402_driver_->is_pdo_output_enabled(); }
 };
 }  // namespace ros2_canopen
 

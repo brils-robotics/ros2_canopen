@@ -321,6 +321,10 @@ protected:
 
   std::function<void()> on_sync_function_;
 
+  // Gate for RPDO (drive-bound) output. When false, universal_set_value()'s
+  // is_rpdo branch and tpdo_transmit() drop the write instead of queuing it.
+  std::atomic<bool> pdo_output_enabled_;
+
   // void set_sync_function(std::function<void()> on_sync_function)
   // {
   //   on_sync_function_ = on_sync_function;
@@ -411,7 +415,8 @@ public:
     std::chrono::milliseconds boot_timeout = 20ms)
   : FiberDriver(exec, master, id),
     rpdo_queue(new SafeQueue<COData>()),
-    emcy_queue(new SafeQueue<COEmcy>())
+    emcy_queue(new SafeQueue<COEmcy>()),
+    pdo_output_enabled_(true)
   {
     nodeid = id;
     running = false;
@@ -729,6 +734,22 @@ public:
    */
   bool is_booted() { return booted.load(); }
 
+  /**
+   * @brief Enable or disable RPDO (drive-bound) output transmission
+   *
+   * While disabled, universal_set_value()'s RPDO branch and tpdo_transmit()
+   * skip both the local dictionary update and WriteEvent() - no frame is queued.
+   * The next write after re-enabling carries the then-current value.
+   *
+   * @param [in] enabled  true to allow transmission, false to block it
+   */
+  void set_pdo_output_enabled(bool enabled) { pdo_output_enabled_.store(enabled); }
+
+  /**
+   * @brief Query whether RPDO output transmission is currently enabled
+   */
+  bool is_pdo_output_enabled() const { return pdo_output_enabled_.load(); }
+
   template <typename T>
   void submit_write(COData data)
   {
@@ -850,6 +871,11 @@ public:
     }
     if (is_rpdo)
     {
+      if (!pdo_output_enabled_.load())
+      {
+        // Gated off - drop the write, do not update the dictionary or queue a frame.
+        return;
+      }
       std::scoped_lock<std::mutex> lck(this->dictionary_mutex_);
       this->dictionary_->setVal<T>(index, subindex, value);
       this->tpdo_mapped[index][subindex] = value;

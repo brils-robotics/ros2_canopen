@@ -469,6 +469,25 @@ protected:
   std::unique_ptr<std::thread> spin_thread_;
   std::unique_ptr<std::thread> init_thread_;
 
+  // Command interface backing the optional '<gpio name="canopen_pdo_gate">' with a
+  // command_interface named "enable". NaN means "not yet claimed by any controller"
+  // and is treated as enabled, preserving pre-gate behavior when nothing writes to it.
+  double pdo_gate_enable_cmd_{std::numeric_limits<double>::quiet_NaN()};
+  bool pdo_gate_declared_{false};
+  bool pdo_gate_last_applied_enabled_{true};
+
+  /**
+   * @brief Checks whether the desired PDO output state changed since it was last applied.
+   *
+   * Returns false (nothing to do) if the gpio was not declared in the URDF, or if the
+   * effective state (NaN treated as enabled) is unchanged since the last call that
+   * returned true.
+   *
+   * @param[out] enabled  the new state to apply, valid only when this returns true
+   * @return true if the caller should (re-)apply `enabled` to all registered drivers
+   */
+  bool pdoGateStateChanged(bool & enabled);
+
   void spin();
   void clean();
 

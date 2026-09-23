@@ -24,11 +24,25 @@
 
 #include <gmock/gmock.h>
 
+#include <memory>
 #include <string>
 
 #include "hardware_interface/resource_manager.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "ros2_control_test_assets/components_urdfs.hpp"
 #include "ros2_control_test_assets/descriptions.hpp"
+
+namespace
+{
+// The single-argument ResourceManager(urdf) constructor used in older ros2_control no longer
+// exists - the installed hardware_interface requires an explicit clock and logger.
+std::unique_ptr<hardware_interface::ResourceManager> makeResourceManager(const std::string & urdf)
+{
+  return std::make_unique<hardware_interface::ResourceManager>(
+    urdf, std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME),
+    rclcpp::get_logger("test_canopen_system"));
+}
+}  // namespace
 
 class TestCanopenSystem : public ::testing::Test
 {
@@ -54,14 +68,48 @@ protected:
           </joint>
         </ros2_control>
     )";
+
+    // No joints - keeps this focused on gpio export and avoids having to match
+    // CanopenSystem's per-joint rpdo/tpdo/nmt interface names for an unrelated fixture.
+    canopen_system_pdo_gate_only_ =
+      R"(
+        <ros2_control name="CanopenSystemPdoGate" type="system">
+          <hardware>
+            <plugin>canopen_ros2_control/CanopenSystem</plugin>
+          </hardware>
+          <gpio name="canopen_pdo_gate">
+            <command_interface name="enable"/>
+          </gpio>
+        </ros2_control>
+    )";
   }
 
   std::string canopen_system_2dof_;
+  std::string canopen_system_pdo_gate_only_;
 };
 
 TEST_F(TestCanopenSystem, load_canopen_system_2dof)
 {
   auto urdf = ros2_control_test_assets::urdf_head + canopen_system_2dof_ +
               ros2_control_test_assets::urdf_tail;
-  ASSERT_NO_THROW(hardware_interface::ResourceManager rm(urdf));
+  ASSERT_NO_THROW(makeResourceManager(urdf));
+}
+
+// Without the 'canopen_pdo_gate' gpio declared, no gate command interface is exported -
+// this is the pre-existing behavior and must not regress for hardware that omits the gpio.
+TEST_F(TestCanopenSystem, pdo_gate_not_exported_without_gpio)
+{
+  auto urdf = ros2_control_test_assets::urdf_head + canopen_system_2dof_ +
+              ros2_control_test_assets::urdf_tail;
+  auto rm = makeResourceManager(urdf);
+  EXPECT_FALSE(rm->command_interface_exists("canopen_pdo_gate/enable"));
+}
+
+// With the gpio declared, the command interface must be exported so a controller can claim it.
+TEST_F(TestCanopenSystem, pdo_gate_exported_with_gpio)
+{
+  auto urdf = ros2_control_test_assets::urdf_head + canopen_system_pdo_gate_only_ +
+              ros2_control_test_assets::urdf_tail;
+  auto rm = makeResourceManager(urdf);
+  EXPECT_TRUE(rm->command_interface_exists("canopen_pdo_gate/enable"));
 }

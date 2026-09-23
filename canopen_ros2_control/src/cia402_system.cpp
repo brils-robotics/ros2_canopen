@@ -292,6 +292,17 @@ hardware_interface::return_type Cia402System::write(
 {
   auto drivers = device_container_->get_registered_drivers();
 
+  bool gate_enabled;
+  if (pdoGateStateChanged(gate_enabled))
+  {
+    for (const auto & kv : drivers)
+    {
+      std::static_pointer_cast<ros2_canopen::Cia402Driver>(kv.second)->set_pdo_output_enabled(
+        gate_enabled);
+    }
+    RCLCPP_INFO(kLogger, "CANopen PDO output %s", gate_enabled ? "enabled" : "disabled");
+  }
+
   // Process NMT commands per node (not per channel)
   for (auto it = canopen_data_.begin(); it != canopen_data_.end(); ++it)
   {

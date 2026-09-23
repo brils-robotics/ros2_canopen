@@ -23,6 +23,7 @@
 
 #include "canopen_ros2_control/canopen_system.hpp"
 
+#include <cmath>
 #include <limits>
 #include <vector>
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -40,21 +41,28 @@ CanopenSystem::CanopenSystem() {}
 
 void CanopenSystem::clean()
 {
-  executor_->cancel();
-  printf("Joining...");
-  spin_thread_->join();
-  printf("Joined!");
+  // on_configure() may never have run (e.g. component destroyed right after on_init()),
+  // in which case these are still unset - guard against that instead of dereferencing null.
+  if (executor_)
+  {
+    executor_->cancel();
+  }
+  if (spin_thread_ && spin_thread_->joinable())
+  {
+    printf("Joining...");
+    spin_thread_->join();
+    printf("Joined!");
+  }
 
   device_container_.reset();
   executor_.reset();
 
-  if (init_thread_->joinable())
+  if (init_thread_ && init_thread_->joinable())
   {
     init_thread_->join();
   }
   init_thread_.reset();
 
-  executor_.reset();
   spin_thread_.reset();
 }
 
@@ -253,7 +261,40 @@ std::vector<hardware_interface::CommandInterface> CanopenSystem::export_command_
       info_.joints[i].name, "nmt/start_fbk", &canopen_data_[node_id].nmt_state.start_fbk));
   }
 
+  for (const auto & gpio : info_.gpios)
+  {
+    if (gpio.name != "canopen_pdo_gate")
+    {
+      continue;
+    }
+    for (const auto & command_interface : gpio.command_interfaces)
+    {
+      if (command_interface.name != "enable")
+      {
+        continue;
+      }
+      pdo_gate_declared_ = true;
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        gpio.name, command_interface.name, &pdo_gate_enable_cmd_));
+    }
+  }
+
   return command_interfaces;
+}
+
+bool CanopenSystem::pdoGateStateChanged(bool & enabled)
+{
+  if (!pdo_gate_declared_)
+  {
+    return false;
+  }
+  enabled = std::isnan(pdo_gate_enable_cmd_) ? true : (pdo_gate_enable_cmd_ >= 0.5);
+  if (enabled == pdo_gate_last_applied_enabled_)
+  {
+    return false;
+  }
+  pdo_gate_last_applied_enabled_ = enabled;
+  return true;
 }
 
 hardware_interface::CallbackReturn CanopenSystem::on_activate(
@@ -304,6 +345,17 @@ hardware_interface::return_type CanopenSystem::write(
 {
   // TODO(anyone): write robot's commands'
   auto drivers = device_container_->get_registered_drivers();
+
+  bool gate_enabled;
+  if (pdoGateStateChanged(gate_enabled))
+  {
+    for (const auto & kv : drivers)
+    {
+      std::static_pointer_cast<ros2_canopen::ProxyDriver>(kv.second)->set_pdo_output_enabled(
+        gate_enabled);
+    }
+    RCLCPP_INFO(kLogger, "CANopen PDO output %s", gate_enabled ? "enabled" : "disabled");
+  }
 
   for (auto it = canopen_data_.begin(); it != canopen_data_.end(); ++it)
   {

@@ -379,6 +379,11 @@ void LelyDriverBridge::tpdo_transmit(COData data)
               << " object does not exist" << std::endl;
     return;
   }
+  if (!pdo_output_enabled_.load())
+  {
+    // Gated off - drop the write, do not update the dictionary or queue a frame.
+    return;
+  }
   uint8_t co_def = (uint8_t)sub->getType();
   try
   {

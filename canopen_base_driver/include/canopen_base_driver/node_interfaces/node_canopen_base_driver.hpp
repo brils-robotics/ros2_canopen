@@ -134,6 +134,30 @@ public:
   {
     emcy_cb_ = std::move(emcy_cb);
   }
+
+  /**
+   * @brief Enable or disable RPDO (drive-bound) output transmission for this driver
+   *
+   * No-op if the underlying LelyDriverBridge is not currently instantiated
+   * (e.g. before configure or after cleanup).
+   *
+   * @param enabled true to allow transmission, false to block it
+   */
+  void set_pdo_output_enabled(bool enabled)
+  {
+    if (lely_driver_)
+    {
+      lely_driver_->set_pdo_output_enabled(enabled);
+    }
+  }
+
+  /**
+   * @brief Query whether RPDO output transmission is currently enabled
+   *
+   * Returns true (allowed) if the underlying LelyDriverBridge is not
+   * currently instantiated, matching the pre-gate default behavior.
+   */
+  bool is_pdo_output_enabled() const { return lely_driver_ ? lely_driver_->is_pdo_output_enabled() : true; }
 };
 typedef NodeCanopenBaseDriver<rclcpp::Node> NCBDNode;
 typedef NodeCanopenBaseDriver<rclcpp_lifecycle::LifecycleNode> NCBDLifecycleNode;

@@ -71,6 +71,13 @@ public:
   {
     node_canopen_proxy_driver_->register_emcy_cb(emcy_cb);
   }
+
+  virtual void set_pdo_output_enabled(bool enabled)
+  {
+    node_canopen_proxy_driver_->set_pdo_output_enabled(enabled);
+  }
+
+  virtual bool is_pdo_output_enabled() { return node_canopen_proxy_driver_->is_pdo_output_enabled(); }
 };
 }  // namespace ros2_canopen
 
