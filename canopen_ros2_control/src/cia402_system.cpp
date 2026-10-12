@@ -83,7 +83,8 @@ void Cia402System::initDeviceContainer()
 hardware_interface::CallbackReturn Cia402System::on_configure(
   const rclcpp_lifecycle::State & previous_state)
 {
-  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>(
+    rclcpp::ExecutorOptions(), executor_threads_);
   device_container_ = std::make_shared<ros2_canopen::DeviceContainer>(executor_);
   executor_->add_node(device_container_);
 

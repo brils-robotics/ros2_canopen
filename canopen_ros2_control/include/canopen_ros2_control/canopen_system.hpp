@@ -24,6 +24,7 @@
 #ifndef CANOPEN_ROS2_CONTROL__CANOPEN_SYSTEM_HPP_
 #define CANOPEN_ROS2_CONTROL__CANOPEN_SYSTEM_HPP_
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <queue>
@@ -53,6 +54,34 @@ auto makeMemcpyCaster(const SourceType & source)
     std::memcpy(&target, &source, sizeof(TargetType));
     return target;
   };
+}
+
+/**
+ * @brief Parses the optional 'executor_threads' hardware parameter.
+ *
+ * An absent parameter yields 0, which lets rclcpp pick its default thread count.
+ *
+ * @param[in] hardware_parameters  hardware parameters of the ros2_control hardware info
+ * @param[out] threads  parsed thread count, valid only when this returns true
+ * @return false if the value is not a plain non-negative integer
+ */
+inline bool parseExecutorThreads(
+  const std::unordered_map<std::string, std::string> & hardware_parameters, size_t & threads)
+{
+  threads = 0;
+  const auto it = hardware_parameters.find("executor_threads");
+  if (it == hardware_parameters.end())
+  {
+    return true;
+  }
+  const std::string & value = it->second;
+  if (
+    value.empty() || value.size() > 6 || value.find_first_not_of("0123456789") != std::string::npos)
+  {
+    return false;
+  }
+  threads = static_cast<size_t>(std::stoul(value));
+  return true;
 }
 
 const std::vector<std::string> SUPPORTED_TYPES = {"bool",     "int8_t",  "uint8_t", "int16_t",
@@ -463,6 +492,8 @@ public:
 protected:
   std::shared_ptr<ros2_canopen::DeviceContainer> device_container_;
   std::shared_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
+  // 0 lets rclcpp use its default (hardware concurrency)
+  size_t executor_threads_{0};
   // can stuff
   std::map<uint16_t, CanopenNodeData> canopen_data_;
   // threads

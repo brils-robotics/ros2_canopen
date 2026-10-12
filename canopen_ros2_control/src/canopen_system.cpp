@@ -82,13 +82,23 @@ hardware_interface::CallbackReturn CanopenSystem::on_init(
     kLogger, "can_interface_name: '%s'", info_.hardware_parameters["can_interface_name"].c_str());
   RCLCPP_INFO(kLogger, "master_bin: '%s'", info_.hardware_parameters["master_bin"].c_str());
 
+  if (!parseExecutorThreads(info_.hardware_parameters, executor_threads_))
+  {
+    RCLCPP_ERROR(
+      kLogger, "executor_threads: '%s' is not a non-negative integer",
+      info_.hardware_parameters["executor_threads"].c_str());
+    return CallbackReturn::ERROR;
+  }
+  RCLCPP_INFO(kLogger, "executor_threads: %zu (0 = rclcpp default)", executor_threads_);
+
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn CanopenSystem::on_configure(
   const rclcpp_lifecycle::State & previous_state)
 {
-  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>(
+    rclcpp::ExecutorOptions(), executor_threads_);
   device_container_ = std::make_shared<ros2_canopen::DeviceContainer>(executor_);
   executor_->add_node(device_container_);
 

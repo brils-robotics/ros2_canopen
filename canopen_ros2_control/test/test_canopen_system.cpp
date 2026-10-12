@@ -27,6 +27,9 @@
 #include <memory>
 #include <string>
 
+#include <unordered_map>
+
+#include "canopen_ros2_control/canopen_system.hpp"
 #include "hardware_interface/resource_manager.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "ros2_control_test_assets/components_urdfs.hpp"
@@ -112,4 +115,48 @@ TEST_F(TestCanopenSystem, pdo_gate_exported_with_gpio)
               ros2_control_test_assets::urdf_tail;
   auto rm = makeResourceManager(urdf);
   EXPECT_TRUE(rm->command_interface_exists("canopen_pdo_gate/enable"));
+}
+
+TEST(TestExecutorThreads, absent_parameter_defaults_to_zero)
+{
+  size_t threads = 99;
+  EXPECT_TRUE(canopen_ros2_control::parseExecutorThreads({}, threads));
+  EXPECT_EQ(threads, 0u);
+}
+
+TEST(TestExecutorThreads, valid_values_are_parsed)
+{
+  size_t threads = 99;
+  EXPECT_TRUE(canopen_ros2_control::parseExecutorThreads({{"executor_threads", "4"}}, threads));
+  EXPECT_EQ(threads, 4u);
+  EXPECT_TRUE(canopen_ros2_control::parseExecutorThreads({{"executor_threads", "0"}}, threads));
+  EXPECT_EQ(threads, 0u);
+}
+
+TEST(TestExecutorThreads, invalid_values_are_rejected)
+{
+  for (const std::string value : {"-1", "abc", "4x", "", " 4", "+4", "4.0", "99999999999999999999"})
+  {
+    size_t threads = 0;
+    EXPECT_FALSE(canopen_ros2_control::parseExecutorThreads({{"executor_threads", value}}, threads))
+      << "value: '" << value << "'";
+  }
+}
+
+TEST_F(TestCanopenSystem, load_canopen_system_with_executor_threads)
+{
+  const std::string hw =
+    R"(
+        <ros2_control name="CanopenSystemThreads" type="system">
+          <hardware>
+            <plugin>canopen_ros2_control/CanopenSystem</plugin>
+            <param name="executor_threads">4</param>
+          </hardware>
+          <gpio name="canopen_pdo_gate">
+            <command_interface name="enable"/>
+          </gpio>
+        </ros2_control>
+    )";
+  auto urdf = ros2_control_test_assets::urdf_head + hw + ros2_control_test_assets::urdf_tail;
+  ASSERT_NO_THROW(makeResourceManager(urdf));
 }
